@@ -1,5 +1,6 @@
 import argparse
 import os
+import time
 
 import cv2
 import numpy as np
@@ -9,10 +10,8 @@ from utils.utils import generate_bbox, py_nms, convert_to_square
 from utils.utils import pad, calibrate_box, processed_image
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--model_path', type=str, default='infer_models',      help='PNet、RNet、ONet三个模型文件存在的文件夹路径')
-parser.add_argument('--image_path', type=str, default='dataset/test.jpg',  help='需要预测图像的路径')
+parser.add_argument('--model_path', type=str, default='infer_models', help='PNet、RNet、ONet三个模型文件存在的文件夹路径')
 args = parser.parse_args()
-
 
 device = torch.device("cpu")
 
@@ -204,9 +203,8 @@ def detect_onet(im, dets, thresh):
 
 
 # 预测图片
-def infer_image(image_path):
-    im = cv2.imdecode(np.fromfile(image_path, dtype=np.uint8), -1)
-    print(type(im))
+def infer_image(img):
+    im = img
     # 调用第一个模型预测
     boxes_c = detect_pnet(im, 20, 0.79, 0.9)
     if boxes_c is None:
@@ -245,13 +243,50 @@ def draw_face(image_path, boxes_c, landmarks):
     cv2.waitKey(0)
 
 
+# 切下巴
+def cut_img(image, landmarks):
+    line = 0
+    for i in range(landmarks.shape[0]):
+        if landmarks[i][-1] > line:
+            line = landmarks[i][-1]
+        if landmarks[i][-3] > line:
+            line = landmarks[i][-3]
+
+    img = image
+
+    # 裁剪图像，只保留线以下的部分
+    cropped_img = img[int(line):, :]
+    return cropped_img
+
+
+def image_change(img):
+    boxes_c, landmarks = infer_image(img)
+
+    # 后续处理
+    if boxes_c is not None:
+        # 裁剪后的图像
+        cropped_img = cut_img(image=img, landmarks=landmarks)
+        return cropped_img
+    else:
+        return None
+
+
 if __name__ == '__main__':
     # 预测图片获取人脸的box和关键点
-    boxes_c, landmarks = infer_image(r"D:\AppsaboutCodes\Projects\Pytorch-MTCNN\dataset\test.jpg")
-    print(boxes_c)
-    print(landmarks)
-    # 把关键画出来
-    if boxes_c is not None:
-        draw_face(image_path=args.image_path, boxes_c=boxes_c, landmarks=landmarks)
-    else:
-        print('image not have face')
+    base_path = r"C:\Users\HP\Desktop\test_img"
+    files_path = os.listdir(base_path)
+    save_path = r"C:\Users\HP\Desktop\new_img"
+    for file in files_path:
+        if "cropped" in file:
+            continue
+        img_path = os.path.join(base_path, file)
+        img = cv2.imdecode(np.fromfile(img_path, dtype=np.uint8), -1)
+        new_img = image_change(img)
+        if new_img is None:
+            print(f"No Face: {file}")
+            continue
+
+        # 解析文件名称并且保存
+        file_name = os.path.basename(img_path)
+        savepath = os.path.join(save_path, file_name.split(".")[0] + "cropped.jpg")
+        cv2.imwrite(savepath, new_img)
