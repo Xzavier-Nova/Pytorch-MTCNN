@@ -14,23 +14,20 @@ parser.add_argument('--image_path', type=str, default='dataset/test.jpg',  help=
 args = parser.parse_args()
 
 
-device = torch.device("cuda")
+device = torch.device("cpu")
 
 # 获取P模型
-pnet = torch.jit.load(os.path.join(args.model_path, 'PNet.pth'))
-pnet.to(device)
+pnet = torch.jit.load(os.path.join(args.model_path, 'PNet.pth'), map_location=device)
 softmax_p = torch.nn.Softmax(dim=0)
 pnet.eval()
 
 # 获取R模型
-rnet = torch.jit.load(os.path.join(args.model_path, 'RNet.pth'))
-rnet.to(device)
+rnet = torch.jit.load(os.path.join(args.model_path, 'RNet.pth'), map_location=device)
 softmax_r = torch.nn.Softmax(dim=-1)
 rnet.eval()
 
 # 获取R模型
-onet = torch.jit.load(os.path.join(args.model_path, 'ONet.pth'))
-onet.to(device)
+onet = torch.jit.load(os.path.join(args.model_path, 'ONet.pth'), map_location=device)
 softmax_o = torch.nn.Softmax(dim=-1)
 onet.eval()
 
@@ -208,7 +205,8 @@ def detect_onet(im, dets, thresh):
 
 # 预测图片
 def infer_image(image_path):
-    im = cv2.imread(image_path)
+    im = cv2.imdecode(np.fromfile(image_path, dtype=np.uint8), -1)
+    print(type(im))
     # 调用第一个模型预测
     boxes_c = detect_pnet(im, 20, 0.79, 0.9)
     if boxes_c is None:
@@ -227,7 +225,7 @@ def infer_image(image_path):
 
 # 画出人脸框和关键点
 def draw_face(image_path, boxes_c, landmarks):
-    img = cv2.imread(image_path)
+    img = cv2.imdecode(np.fromfile(image_path, dtype=np.uint8), -1)
     for i in range(boxes_c.shape[0]):
         bbox = boxes_c[i, :4]
         score = boxes_c[i, 4]
@@ -249,7 +247,7 @@ def draw_face(image_path, boxes_c, landmarks):
 
 if __name__ == '__main__':
     # 预测图片获取人脸的box和关键点
-    boxes_c, landmarks = infer_image(args.image_path)
+    boxes_c, landmarks = infer_image(r"D:\AppsaboutCodes\Projects\Pytorch-MTCNN\dataset\test.jpg")
     print(boxes_c)
     print(landmarks)
     # 把关键画出来
