@@ -2,9 +2,9 @@ import argparse
 import os
 import time
 
-import cv2
 import numpy as np
 import torch
+from PIL import Image, ImageDraw, ImageFont
 
 from utils.utils import generate_bbox, py_nms, convert_to_square
 from utils.utils import pad, calibrate_box, processed_image
@@ -138,7 +138,9 @@ def detect_rnet(im, dets, thresh):
         tmp = np.zeros((tmph[i], tmpw[i], 3), dtype=np.uint8)
         try:
             tmp[dy[i]:edy[i] + 1, dx[i]:edx[i] + 1, :] = im[y[i]:ey[i] + 1, x[i]:ex[i] + 1, :]
-            img = cv2.resize(tmp, (24, 24), interpolation=cv2.INTER_LINEAR)
+            pil_image = Image.fromarray(tmp)
+            resized_pil_image = pil_image.resize((24, 24), Image.LINEAR)
+            img = np.array(resized_pil_image)
             img = img.transpose((2, 0, 1))
             img = (img - 127.5) / 128
             cropped_ims[i, :, :, :] = img
@@ -173,7 +175,9 @@ def detect_onet(im, dets, thresh):
     for i in range(num_boxes):
         tmp = np.zeros((tmph[i], tmpw[i], 3), dtype=np.uint8)
         tmp[dy[i]:edy[i] + 1, dx[i]:edx[i] + 1, :] = im[y[i]:ey[i] + 1, x[i]:ex[i] + 1, :]
-        img = cv2.resize(tmp, (48, 48), interpolation=cv2.INTER_LINEAR)
+        pil_image = Image.fromarray(tmp)
+        resized_pil_image = pil_image.resize((24, 24), Image.LINEAR)
+        img = np.array(resized_pil_image)
         img = img.transpose((2, 0, 1))
         img = (img - 127.5) / 128
         cropped_ims[i, :, :, :] = img
@@ -204,7 +208,7 @@ def detect_onet(im, dets, thresh):
 
 # 预测图片
 def infer_image(img):
-    im = img
+    im = np.array(img)
     # 调用第一个模型预测
     boxes_c = detect_pnet(im, 20, 0.79, 0.9)
     if boxes_c is None:
@@ -223,25 +227,29 @@ def infer_image(img):
 
 # 画出人脸框和关键点
 def draw_face(image_path, boxes_c, landmarks):
-    img = cv2.imdecode(np.fromfile(image_path, dtype=np.uint8), -1)
+    img = Image.open(image_path)
+    draw = ImageDraw.Draw(img)
+
     for i in range(boxes_c.shape[0]):
         bbox = boxes_c[i, :4]
         score = boxes_c[i, 4]
         corpbbox = [int(bbox[0]), int(bbox[1]), int(bbox[2]), int(bbox[3])]
-        # 画人脸框
-        cv2.rectangle(img, (corpbbox[0], corpbbox[1]),
-                      (corpbbox[2], corpbbox[3]), (255, 0, 0), 1)
-        # 判别为人脸的置信度
-        cv2.putText(img, '{:.2f}'.format(score),
-                    (corpbbox[0], corpbbox[1] - 2),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2)
-    # 画关键点
+
+        # Draw rectangle (face box)
+        draw.rectangle([corpbbox[0], corpbbox[1], corpbbox[2], corpbbox[3]], outline="blue", width=1)
+
+        # Draw confidence score
+        font = ImageFont.load_default()
+        draw.text((corpbbox[0], corpbbox[1] - 10), '{:.2f}'.format(score), fill="red", font=font)
+
+    # Draw landmarks
     for i in range(landmarks.shape[0]):
         for j in range(len(landmarks[i]) // 2):
-            cv2.circle(img, (int(landmarks[i][2 * j]), int(int(landmarks[i][2 * j + 1]))), 2, (0, 0, 255))
-    cv2.imshow('result', img)
-    cv2.waitKey(0)
+            x = int(landmarks[i][2 * j])
+            y = int(landmarks[i][2 * j + 1])
+            draw.ellipse((x - 1, y - 1, x + 1, y + 1), fill="red")
 
+    img.show()
 
 # 切下巴
 def cut_img(image, landmarks):
@@ -280,7 +288,7 @@ if __name__ == '__main__':
         if "cropped" in file:
             continue
         img_path = os.path.join(base_path, file)
-        img = cv2.imdecode(np.fromfile(img_path, dtype=np.uint8), -1)
+        img = Image.open(img_path)
         new_img = image_change(img)
         if new_img is None:
             print(f"No Face: {file}")
@@ -289,4 +297,4 @@ if __name__ == '__main__':
         # 解析文件名称并且保存
         file_name = os.path.basename(img_path)
         savepath = os.path.join(save_path, file_name.split(".")[0] + "cropped.jpg")
-        cv2.imwrite(savepath, new_img)
+        new_img.save(savepath)
